@@ -58,3 +58,46 @@ function get_module_configs() {
   fi
   echo "current sdkconfig file: ${at_sdkconfig_file}"
 }
+
+function enlarge_app_partition() {
+  local app0_size app1_size to_set_size to_set_hex_size
+  # Already enlarged, or partition table has no ota_1 (e.g. 2MB no-OTA modules).
+  if ! grep -q 'ota_1' "${module_cfg_dir}/partitions_at.csv"; then
+    echo "CI: skip enlarge_app_partition (no ota_1 in ${module_cfg_dir}/partitions_at.csv)"
+    return 0
+  fi
+  app0_size=$(cat "${module_cfg_dir}/partitions_at.csv" | grep ota_0 | awk -F, '{print $5}')
+  app1_size=$(cat "${module_cfg_dir}/partitions_at.csv" | grep ota_1 | awk -F, '{print $5}')
+  to_set_size=$((app0_size + app1_size))
+  sed -i '/ota_1/d' "${module_cfg_dir}/partitions_at.csv"
+  to_set_hex_size=$(printf "0x%x" "${to_set_size}")
+  sed -i '/ota_0/s,'"${app0_size}"','"${to_set_hex_size}"',g' "${module_cfg_dir}/partitions_at.csv"
+}
+
+function enable_mem_debug_if_config() {
+  local level="${AT_CI_MEM_DEBUG_LEVEL:-0}"
+  case "${level}" in
+    0)
+      return 0
+      ;;
+    1)
+      echo "CI: AT_CI_MEM_DEBUG_LEVEL=1 (monitor)"
+      echo -e "CONFIG_AT_MEM_DEBUG_MONITOR=y" >> "${at_sdkconfig_file}"
+      ;;
+    2)
+      echo "CI: AT_CI_MEM_DEBUG_LEVEL=2 (monitor + heap light)"
+      echo -e "CONFIG_AT_MEM_DEBUG_HEAP_LIGHT=y" >> "${at_sdkconfig_file}"
+      echo -e "CONFIG_HEAP_POISONING_LIGHT=y" >> "${at_sdkconfig_file}"
+      ;;
+    3)
+      echo "CI: AT_CI_MEM_DEBUG_LEVEL=3 (monitor + heap comprehensive)"
+      echo -e "CONFIG_AT_MEM_DEBUG_HEAP_COMPREHENSIVE=y" >> "${at_sdkconfig_file}"
+      echo -e "CONFIG_HEAP_POISONING_COMPREHENSIVE=y" >> "${at_sdkconfig_file}"
+      ;;
+    *)
+      echo "ERROR: AT_CI_MEM_DEBUG_LEVEL must be 0..3, got '${level}'"
+      return 1
+      ;;
+  esac
+  enlarge_app_partition
+}

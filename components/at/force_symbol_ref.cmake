@@ -105,3 +105,7 @@ endif()
 if (CONFIG_AT_USER_COMMAND_SUPPORT)
     target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_at_user_cmd_register")
 endif()
+
+if (CONFIG_AT_MEM_MONITOR_DEBUG)
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_at_mem_monitor_cmd_register")
+endif()

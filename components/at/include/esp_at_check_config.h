@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2025-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -52,4 +52,22 @@
 #error "CONFIG_LWIP_MAX_SOCKETS < (AT_LINK_NUM + AT_HTTP_NUM + AT_MQTT_NUM + AT_WS_NUM + AT_WEB_NUM + 4)! Please enlarge the value of CONFIG_LWIP_MAX_SOCKETS in (Top) > Component config > LWIP > Max number of open sockets."
 #endif
 
+#endif
+
+/*
+ * AT memory debug mode requires matching IDF heap poisoning settings.
+ * Kconfig cannot select IDF choice symbols, so catch mismatches here.
+ */
+#ifdef CONFIG_AT_MEM_MONITOR_DEBUG
+#if CONFIG_AT_MEM_DEBUG_HEAP_LIGHT
+#ifndef CONFIG_HEAP_POISONING_LIGHT
+#error "CONFIG_HEAP_POISONING_LIGHT is undefined, please enable it first: python build.py menuconfig > Component config > Heap memory debugging > Heap corruption detection > Light impact"
+#endif
+#endif
+
+#if CONFIG_AT_MEM_DEBUG_HEAP_COMPREHENSIVE
+#ifndef CONFIG_HEAP_POISONING_COMPREHENSIVE
+#error "CONFIG_HEAP_POISONING_COMPREHENSIVE is undefined, please enable it first: python build.py menuconfig > Component config > Heap memory debugging > Heap corruption detection > Comprehensive"
+#endif
+#endif
 #endif
