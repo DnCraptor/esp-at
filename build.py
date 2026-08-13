@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import json
+import shutil
 
 # color output on windows
 if sys.platform == 'win32':
@@ -467,12 +468,52 @@ def install_compilation_env(target):
 
     print('\r\nAll done! You can now run:\r\n\r\n  {}build.py build\r\n'.format('python ' if sys.platform == 'win32' else './'))
 
+LINUX_PREREQ_CMDS = {
+    'apt-get': 'sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv python3-setuptools cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0',
+    'dnf': 'sudo dnf install git wget flex bison gperf python3 python3-pip python3-setuptools cmake ninja-build ccache dfu-util libusbx',
+    'yum': 'sudo yum install git wget flex bison gperf python3 python3-pip python3-setuptools cmake ninja-build ccache dfu-util libusbx',
+    'pacman': 'sudo pacman -S --needed gcc git make flex bison gperf python python-pip python-setuptools cmake ninja ccache dfu-util libusb',
+}
+
+def detect_linux_package_manager():
+    os_id = ''
+    id_like = ''
+    try:
+        with open('/etc/os-release') as f:
+            for line in f:
+                if line.startswith('ID='):
+                    os_id = line.split('=', 1)[1].strip().strip('"').lower()
+                elif line.startswith('ID_LIKE='):
+                    id_like = line.split('=', 1)[1].strip().strip('"').lower()
+    except OSError:
+        pass
+
+    hint = ' '.join((os_id, id_like))
+    if any(name in hint for name in ('debian', 'ubuntu')):
+        candidates = ('apt-get',)
+    elif any(name in hint for name in ('fedora', 'rhel', 'centos', 'rocky', 'alma')):
+        candidates = ('dnf', 'yum')
+    elif 'arch' in hint:
+        candidates = ('pacman',)
+    else:
+        candidates = ('apt-get', 'dnf', 'yum', 'pacman')
+
+    for pkg_mgr in candidates:
+        if shutil.which(pkg_mgr):
+            return pkg_mgr
+    return None
+
 def install_prerequisites():
     # install ESP-IDF prerequisites
     ESP_LOGI('Ready to install ESP-IDF prerequisites..')
     cmd = ''
     if sys.platform == 'linux':
-        cmd = 'sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv python3-setuptools cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0'
+        pkg_mgr = detect_linux_package_manager()
+        cmd = LINUX_PREREQ_CMDS.get(pkg_mgr)
+        if not cmd:
+            manual_cmds = '\n'.join('  - {}'.format(v) for v in LINUX_PREREQ_CMDS.values())
+            raise Exception('unsupported Linux package manager. Please install ESP-IDF prerequisites manually by running one of the following commands:\n{}'.format(manual_cmds))
+        ESP_LOGI('Using package manager: {}'.format(pkg_mgr))
     elif sys.platform == 'darwin':
         cmd = 'brew install cmake ninja dfu-util ccache python3'
     elif sys.platform == 'win32':
