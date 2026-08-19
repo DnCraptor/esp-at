@@ -481,6 +481,74 @@ menu "AT Log Level"
 endmenu
 
 
+choice AT_MEM_DEBUG_MODE
+    prompt "AT memory debug mode"
+    default AT_MEM_DEBUG_NONE
+    depends on AT_ENABLE
+    help
+        Select AT memory debugging mode. Higher modes increase binary size
+        and runtime cost. "None" is for production; other modes are for debug
+        builds (also controllable via GitLab AT_CI_MEM_DEBUG_LEVEL: 0/1/2/3).
+
+        Heap light/comprehensive also need matching IDF settings (Kconfig cannot
+        select IDF choice symbols). Set manually under Component config ->
+        Heap memory debugging -> Heap corruption detection:
+          - Heap light: Light impact (CONFIG_HEAP_POISONING_LIGHT)
+          - Heap comprehensive: Comprehensive (CONFIG_HEAP_POISONING_COMPREHENSIVE)
+        See each mode's help for details; build fails if the IDF option is missing.
+
+    config AT_MEM_DEBUG_NONE
+        bool "None (disabled)"
+
+    config AT_MEM_DEBUG_MONITOR
+        bool "Monitor (New AT+SYSMEMCHK command, and periodic stack/heap check)"
+        select FREERTOS_USE_TRACE_FACILITY
+        help
+            Enables stack high-watermark dump and heap_caps_check_integrity_all().
+            Without IDF heap poisoning this only catches basic heap metadata
+            corruption; use Heap light/comprehensive for stronger detection.
+
+    config AT_MEM_DEBUG_HEAP_LIGHT
+        bool "Monitor + heap light poisoning (READ HELP FIRST)"
+        select FREERTOS_USE_TRACE_FACILITY
+        help
+            Same as Monitor, plus requires IDF Heap corruption detection set to
+            "Light impact" (CONFIG_HEAP_POISONING_LIGHT).
+
+    config AT_MEM_DEBUG_HEAP_COMPREHENSIVE
+        bool "Monitor + heap comprehensive poisoning (READ HELP FIRST)"
+        select FREERTOS_USE_TRACE_FACILITY
+        help
+            Same as Monitor, plus requires IDF Heap corruption detection set to
+            "Comprehensive" (CONFIG_HEAP_POISONING_COMPREHENSIVE).
+endchoice
+
+config AT_MEM_MONITOR_DEBUG
+    bool
+    default y if AT_MEM_DEBUG_MONITOR || AT_MEM_DEBUG_HEAP_LIGHT || AT_MEM_DEBUG_HEAP_COMPREHENSIVE
+    help
+        Internal flag enabled when AT memory debug mode is not None.
+        Registers AT+SYSMEMCHK, starts a periodic monitor task, and provides
+        esp_at_mem_check() / ESP_AT_MEM_CHECK().
+
+config AT_MEM_MONITOR_INTV_MS
+    int "Memory monitor interval (ms)"
+    depends on AT_MEM_MONITOR_DEBUG
+    default 5000
+    range 1000 60000
+    help
+        Interval between consecutive background task-stack and heap-integrity
+        checks.
+
+config AT_MEM_MONITOR_STACK_RISK_BYTES
+    int "Stack overflow risk threshold (bytes)"
+    depends on AT_MEM_MONITOR_DEBUG
+    default 256
+    range 32 4096
+    help
+        If a task's remaining free stack (high watermark, in bytes) is below
+        this value, treat it as stack overflow risk (AT+SYSMEMCHK returns ERROR).
+
 menuconfig AT_DEBUG
     bool "Enable ESP-AT Debug"
     default n

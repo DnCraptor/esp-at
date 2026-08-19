@@ -231,6 +231,39 @@ esp_err_t esp_at_nvs_get_blob(nvs_handle_t handle, const char *key, void *out_va
 void esp_at_yield_if_idle_timeout(uint32_t idle_timeout_ms, uint32_t yield_ticks);
 
 /* ============================================================
+ *                     Memory health check
+ * ============================================================ */
+
+#ifdef CONFIG_AT_MEM_MONITOR_DEBUG
+/**
+ * @brief Check task stack high watermarks and heap integrity.
+ *
+ * Dumps each task's stack high watermark (minimum remaining free stack since
+ * task creation), warns when remaining stack is below the configured risk
+ * threshold, and runs heap_caps_check_integrity_all().
+ *
+ * Only available when AT memory debug mode is not None
+ * (CONFIG_AT_MEM_MONITOR_DEBUG). Without IDF heap poisoning, integrity checks
+ * mainly validate heap metadata.
+ *
+ * @param tag   Optional label included in logs (may be NULL).
+ * @param value Optional numeric value included in logs (e.g. a counter or ID).
+ *
+ * For source-location tracing, pass __FILE__(or __func__) and __LINE__, or use
+ * ESP_AT_MEM_CHECK(). Place the macro between two calls to help locate where
+ * heap corruption first appears.
+ *
+ * @return true if healthy, false on stack overflow risk or heap corruption.
+ */
+bool esp_at_mem_check(const char *tag, int value);
+
+/**
+ * @brief Run esp_at_mem_check() with the current source location.
+ */
+#define ESP_AT_MEM_CHECK() esp_at_mem_check(__FILE__, __LINE__)
+#endif
+
+/* ============================================================
  *                        Filesystem API
  * ============================================================ */
 
