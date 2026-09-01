@@ -197,7 +197,7 @@ static void at_uart_init(void)
                 (CONFIG_ESP_CONSOLE_UART_TX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_TX_GPIO : UART_NUM_0_TXD_DIRECT_GPIO_NUM,
                 (CONFIG_ESP_CONSOLE_UART_RX_GPIO >= 0) ? CONFIG_ESP_CONSOLE_UART_RX_GPIO : UART_NUM_0_RXD_DIRECT_GPIO_NUM,
                 CONFIG_ESP_CONSOLE_UART_BAUDRATE);
-#else
+#elif defined(CONFIG_ESP_CONSOLE_UART)
     ESP_AT_LOGI(TAG, "AT log port:uart%d baudrate:%d", CONFIG_ESP_CONSOLE_UART_NUM, CONFIG_ESP_CONSOLE_UART_BAUDRATE);
 #endif
     xTaskCreate(at_uart_task, "uTask", ESP_AT_UART_TASK_STACK_SIZE, NULL, 1, &s_task_handle);
