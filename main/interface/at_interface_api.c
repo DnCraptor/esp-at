@@ -25,6 +25,107 @@ static at_intf_security_ops_t s_intf_security_ops;
 
 static const char *TAG = "at-intf";
 
+/*
+ * pico-speccy compatibility:
+ *   ESP-AT 4.x:     +CIPRECVDATA:<len>,<data>
+ *   pico-speccy:    +CIPRECVDATA,<len>:<data>
+ *
+ * Translate only the two header delimiters. Once the payload length is known,
+ * exactly that many bytes are passed without parsing, so arbitrary binary TCP
+ * data cannot trigger the translator.
+ */
+typedef enum {
+    AT_COMPAT_SCAN = 0,
+    AT_COMPAT_MATCH,
+    AT_COMPAT_COLON,
+    AT_COMPAT_LEN,
+    AT_COMPAT_PAYLOAD,
+} at_compat_state_t;
+
+static at_compat_state_t s_compat_state = AT_COMPAT_SCAN;
+static size_t s_compat_match;
+static uint32_t s_compat_payload_len;
+static const char s_ciprecvdata_prefix[] = "+CIPRECVDATA";
+
+static int32_t at_compat_write_data(at_write_data_fn_t write_fn, uint8_t *data, int32_t len)
+{
+    int32_t segment = 0;
+    int32_t written = 0;
+
+    for (int32_t i = 0; i < len; ++i) {
+        uint8_t ch = data[i];
+        uint8_t replacement = 0;
+
+        switch (s_compat_state) {
+        case AT_COMPAT_SCAN:
+            if (ch == (uint8_t)s_ciprecvdata_prefix[0]) {
+                s_compat_match = 1;
+                s_compat_state = AT_COMPAT_MATCH;
+            }
+            break;
+
+        case AT_COMPAT_MATCH:
+            if (ch == (uint8_t)s_ciprecvdata_prefix[s_compat_match]) {
+                if (++s_compat_match == sizeof(s_ciprecvdata_prefix) - 1) {
+                    s_compat_state = AT_COMPAT_COLON;
+                }
+            } else {
+                s_compat_match = 0;
+                s_compat_state = AT_COMPAT_SCAN;
+            }
+            break;
+
+        case AT_COMPAT_COLON:
+            s_compat_match = 0;
+            s_compat_state = AT_COMPAT_SCAN;
+            if (ch == ':') {
+                replacement = ',';
+                s_compat_payload_len = 0;
+                s_compat_state = AT_COMPAT_LEN;
+            }
+            break;
+
+        case AT_COMPAT_LEN:
+            if (ch >= '0' && ch <= '9') {
+                s_compat_payload_len = s_compat_payload_len * 10 + (uint32_t)(ch - '0');
+            } else if (ch == ',') {
+                replacement = ':';
+                s_compat_state = s_compat_payload_len ? AT_COMPAT_PAYLOAD : AT_COMPAT_SCAN;
+            } else {
+                s_compat_state = AT_COMPAT_SCAN;
+            }
+            break;
+
+        case AT_COMPAT_PAYLOAD:
+            if (--s_compat_payload_len == 0) {
+                s_compat_state = AT_COMPAT_SCAN;
+            }
+            break;
+        }
+
+        if (replacement) {
+            if (i > segment) {
+                int32_t ret = write_fn(data + segment, i - segment);
+                if (ret != i - segment) return (ret < 0) ? ret : written + ret;
+                written += ret;
+            }
+            int32_t ret = write_fn(&replacement, 1);
+            if (ret != 1) return (ret < 0) ? ret : written + ret;
+            written += ret;
+            segment = i + 1;
+        }
+    }
+
+    if (segment < len) {
+        int32_t ret = write_fn(data + segment, len - segment);
+        if (ret < 0) return ret;
+        written += ret;
+    }
+
+    return written;
+}
+
+
 static int32_t at_port_read_data(uint8_t *buffer, int32_t len)
 {
     if (!s_interface_ops.read_data || !buffer || len < 0) {
@@ -84,7 +185,7 @@ static int32_t at_port_write_data(uint8_t *data, int32_t len)
     }
 #endif
 
-    return write_fn(data, len);
+    return at_compat_write_data(write_fn, data, len);
 }
 
 static int32_t at_port_get_data_len(void)
